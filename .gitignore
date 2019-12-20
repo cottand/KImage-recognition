@@ -1,0 +1,14 @@
+# IDE files
+.idea/
+.idea/**
+
+# Build files
+.gradle/
+.gradle/**
+.gradlew
+
+**.jar
+**.class
+
+# Keep gradle wrapper JAR
+!gradle/wrapper/gradle-wrapper.jar
