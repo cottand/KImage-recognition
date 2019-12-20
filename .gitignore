@@ -12,3 +12,4 @@
 
 # Keep gradle wrapper JAR
 !gradle/wrapper/gradle-wrapper.jar
+gradlew
