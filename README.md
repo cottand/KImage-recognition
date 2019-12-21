@@ -13,7 +13,7 @@ featured CNN.
    consider types and stops me from writing stupid things.
    
  - **NumPy bindings instead of a well established data science Kotlin lib?** While this is not
-  python, I still wanted to be very similar to it, and in particular readable to a Python user.
+  python, I still wanted the code to be close, and in particular readable to the Python user.
    Kotlin + NumPy is a good idea since preserving the API across languages will keep the code
    familiar.
    
