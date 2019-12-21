@@ -3,7 +3,7 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-  kotlin("jvm") version "1.3.61"
+  kotlin("jvm") version "1.3.60"
 }
 
 group = "org.cottand"
@@ -22,9 +22,16 @@ dependencies {
   implementation("org.jetbrains:kotlin-numpy:0.1.0")
   implementation("io.arrow-kt:arrow-core:$arrowVersion")
   implementation("io.arrow-kt:arrow-syntax:$arrowVersion")
+
+  testImplementation("org.junit.jupiter:junit-jupiter-api:5.3.1")
+  testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.3.1")
 }
 
+
 tasks {
+  test {
+    useJUnitPlatform()
+  }
   compileKotlin {
     kotlinOptions.jvmTarget = "1.8"
   }

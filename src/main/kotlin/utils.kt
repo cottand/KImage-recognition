@@ -1,14 +1,11 @@
-import org.jetbrains.numkt.core.KtNDArray
-import org.jetbrains.numkt.math.div
-import org.jetbrains.numkt.math.minus
 import org.jetbrains.numkt.zeros
 
 /**
  * Computes the numerical gradient of receiver at [x]
  */
-fun ((Matrix) -> Matrix).numericalGradient(x: Matrix): KtNDArray<Matrix> {
+fun ((Matrix) -> Real).numericalGradient(x: Matrix): Matrix {
   val fx = this(x)
-  val grad = zeros<Matrix>(*x.shape)
+  val grad = zeros<Real>(*x.shape)
   val h = HyperParams.gradientH
 
   var i = 0
