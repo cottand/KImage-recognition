@@ -4,9 +4,9 @@ import arrow.core.None
 import arrow.core.Option
 import arrow.core.getOrElse
 import kotlinx.collections.immutable.PersistentList
-import org.jetbrains.numkt.array
 import org.jetbrains.numkt.concatenate
 import org.jetbrains.numkt.core.KtNDArray
+import org.jetbrains.numkt.math.divAssign
 import org.jetbrains.numkt.math.minus
 import org.jetbrains.numkt.math.plusAssign
 import org.jetbrains.numkt.math.times
@@ -19,18 +19,6 @@ typealias LossFunc = (Int, Matrix) -> Real /* (ExpectedLabel, Actual) -> Loss */
 typealias RegularisationFunc = (Matrix) -> Real
 /* nth class to Image */
 typealias Labelled = Pair<Int, Matrix>
-
-fun Labelled.asMatrix(): Pair<Matrix, Matrix> {
-  val list = (0..9).map { HyperParams.minScore }.toMutableList()
-  list[this.first] = HyperParams.maxScore
-  // TODO verify this is a 1 column 10 line array
-  val left = array<Real>(listOf(list)).t
-  // TODO verify this is a 2 column 10 line array with expected scores on the left
-  return left to this.second
-}
-
-fun train() {
-}
 
 /**
  * Stores hyper parameters and practical constants.
@@ -49,7 +37,7 @@ object HyperParams {
 
 data class Activation(
   val activationFunc: (Matrix) -> Matrix,
-  val dActivationFUnc: (Matrix) -> Matrix
+  val dActivationFunc: (Matrix, Matrix) -> Matrix /* Values, dValues -> dValues */
 )
 
 // TODO maybe reals instead of matrices
@@ -102,6 +90,8 @@ class LinearClassifier(val activation: Activation) : Layer() {
     dW = values.t dot next.dValues
     // TODO grab this layer's nth w column
     dValues = next.dValues dot w[0..1].t
+    assert(dValues.shape.contentEquals(values.shape))
+    dValues = activation.dActivationFunc(values, dValues)
   }
 }
 
@@ -131,12 +121,12 @@ class NeuralNet(
    *
    * TODO biases too rip
    */
-  fun backwardProp(w: Matrix): Matrix {
-    // TODO put dscores (derivatives of scores with respect to loss) in output layer
+  fun backwardProp(w: Matrix, dscores: Matrix): Matrix {
+    output.dValues = dscores
     val firstLayers = input + middleLayers
     firstLayers.forEach { it.feedBackward(w) }
-    val ws = firstLayers.map { it.dW }.toTypedArray()
-    val dW = concatenate(*ws, axis = 1)
+    val dWs = firstLayers.map { it.dW }.toTypedArray()
+    val dW = concatenate(*dWs, axis = 1)
     // TODO refactor
     assert(dW.shape.contentEquals(w.shape))
     return dW
@@ -146,10 +136,18 @@ class NeuralNet(
    * Evaluates the gradient for every x in [xs] using the weights [w].
    * For this, for each x, a forward and backward pass is performed.
    */
-  fun evalGradient(xs: Collection<Labelled>, w: Matrix): Matrix {
+  fun evalAvgGradient(xs: Collection<Labelled>, w: Matrix): Matrix {
+    val gradientSum = zeros<Real>(*w.shape)
     for ((label, x) in xs) {
-      val forwardResult = forwardPass(x, w)
+      val scores = forwardPass(x, w)
+      val loss = lossFuncs.lossFunc(label, scores)
+
+      val curriedLoss = { ss: Matrix -> lossFuncs.lossFunc(label, ss) }
+      val dscoresNumerical = curriedLoss.numericalGradient(scores)
+      val dscores = TODO("Analytical loss on the activation function")
+      gradientSum += backwardProp(w, dscoresNumerical)
     }
+    gradientSum /= xs.size
     TODO()
   }
 }
@@ -158,7 +156,8 @@ fun trainMNIST(initW: Matrix, training: List<Labelled>, validation: Set<Labelled
   val batchSize = HyperParams.batchSize
   val batchNo = training.size / batchSize
   val batches = training.splitIntoBatches(batchSize)
-  assert(batches.size in (batchNo - 1)..(batchNo + 1))
+  assert(batches.size in (batchNo - 1)..(batchNo + 1)) // TODO remove
+  TODO()
 }
 
 /**
@@ -177,7 +176,7 @@ fun trainBatch(
   val stepSize = HyperParams.learningRate
   while (true /* TODO change */) {
     /* STG velocity momentum */
-    val dx = net.evalGradient(batch, weights)
+    val dx = net.evalAvgGradient(batch, weights)
     vx = vx * rho - dx * stepSize
     weights += vx
   }

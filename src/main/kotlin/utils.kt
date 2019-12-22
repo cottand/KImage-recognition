@@ -82,4 +82,18 @@ val dSvmLoss: LossFunc = { label, actual ->
   TODO("Verify")
 }
 
+val reLuActivation : (Matrix) -> Matrix  = { m ->
+  TODO()
+}
+
+val dReLuActivation: (Matrix, Matrix) -> Matrix = { values, dValues ->
+  val ret = zeros<Real>(*dValues.shape)
+  for((i, dV) in dValues.withIndex()) {
+    ret[i] = if (values[i] > 0 ) dV else 0.0
+  }
+  ret
+}
+
+inline fun <reified T : Number> KtNDArray<T>.withIndex() = this.iterator().withIndex()
+
 inline operator fun <reified T> T.plus(list: PersistentList<T>) = list.add(0, this)
