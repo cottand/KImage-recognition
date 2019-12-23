@@ -2,10 +2,6 @@ import arrow.syntax.collections.tail
 import kotlinx.collections.immutable.PersistentList
 import org.jetbrains.numkt.array
 import org.jetbrains.numkt.core.KtNDArray
-import org.jetbrains.numkt.math.maximum
-import org.jetbrains.numkt.math.minus
-import org.jetbrains.numkt.math.plus
-import org.jetbrains.numkt.math.sum
 import org.jetbrains.numkt.zeros
 import java.io.File
 
@@ -65,35 +61,10 @@ fun Collection<Labelled>.splitIntoBatches(batchSize: Int) =
     .groupBy { (i, _) -> i / batchSize }
     .map { (_, v) -> v.map { it.value } }
 
-inline infix fun <reified T : Number> KtNDArray<T>.dot(o: KtNDArray<T>) =
-  org.jetbrains.numkt.linalg.dot(this, o)
-
-val svmLoss: LossFunc = { label, actual ->
-  val margins = maximum(zeros(*actual.shape), actual - actual[label] + 1)
-  margins[label] = 0.0
-  sum(margins)
-}
-
-// TODO return type??
-val dSvmLoss: LossFunc = { label, actual ->
-  val margins = maximum(zeros(*actual.shape), actual - actual[label] + 1)
-  margins.map { if (it != 0.0) 1.0 else 0.0 }
-  sum(margins)
-  TODO("Verify")
-}
-
-val reLuActivation : (Matrix) -> Matrix  = { m ->
-  TODO()
-}
-
-val dReLuActivation: (Matrix, Matrix) -> Matrix = { values, dValues ->
-  val ret = zeros<Real>(*dValues.shape)
-  for((i, dV) in dValues.withIndex()) {
-    ret[i] = if (values[i] > 0 ) dV else 0.0
-  }
-  ret
-}
 
 inline fun <reified T : Number> KtNDArray<T>.withIndex() = this.iterator().withIndex()
 
 inline operator fun <reified T> T.plus(list: PersistentList<T>) = list.add(0, this)
+
+inline fun <reified T : Number> List<KtNDArray<T>>.concatenateToMatrix() =
+  org.jetbrains.numkt.concatenate(*this.toTypedArray())

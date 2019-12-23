@@ -4,14 +4,17 @@ import arrow.core.None
 import arrow.core.Option
 import arrow.core.getOrElse
 import kotlinx.collections.immutable.PersistentList
-import org.jetbrains.numkt.concatenate
 import org.jetbrains.numkt.core.KtNDArray
+import org.jetbrains.numkt.core.dot
 import org.jetbrains.numkt.math.divAssign
 import org.jetbrains.numkt.math.minus
 import org.jetbrains.numkt.math.plusAssign
+import org.jetbrains.numkt.math.plus
+import org.jetbrains.numkt.math.sum
 import org.jetbrains.numkt.math.times
 import org.jetbrains.numkt.zeros
 import java.lang.IllegalStateException
+import kotlin.math.max
 
 typealias Real = Double
 typealias Matrix = KtNDArray<Real>
@@ -20,88 +23,101 @@ typealias RegularisationFunc = (Matrix) -> Real
 /* nth class to Image */
 typealias Labelled = Pair<Int, Matrix>
 
-/**
- * Stores hyper parameters and practical constants.
- */
-object HyperParams {
-  const val regularisationCoeff: Real = 0.1
-  const val gradientH = 0.00001
-  const val neuronsPerLayer = 5
-  const val learningRate = 1e-7 /* e-4 .. e-11 */
-  const val frictionCoeff: Real = 0.95 /* 0.9 .. 0.99 */
-  const val batchSize = 1000
-  const val classes = 10
-  const val minScore = 0.0
-  const val maxScore = 10.0
-}
-
-data class Activation(
-  val activationFunc: (Matrix) -> Matrix,
-  val dActivationFunc: (Matrix, Matrix) -> Matrix /* Values, dValues -> dValues */
-)
-
-// TODO maybe reals instead of matrices
-data class Derivatives(val dx: Matrix, val dw: Matrix)
-
 data class Loss(
   val lossFunc: LossFunc,
-  val dLossFunc: LossFunc
+  val dLossFunc: (Int, Matrix, Real) -> Matrix
 )
 
 sealed class Layer() {
   // TODO verify this is a 1 column matrix
   var values = zeros<Real>(1, HyperParams.neuronsPerLayer)
   var dValues = zeros<Real>(*values.shape)
-  var dW = zeros<Real>(*values.shape)
 
   /**
    * Propagates [Layer.values] from [Layer.prev] over to this layer
    */
-  abstract fun feedForward(w: Matrix)
+  abstract fun feedForward()
 
   /**
    * Uses the cached values in [Layer.values] and [Layer.next]'s derivatives in
    * order to populate this layer's [Layer.dValues].
-   *
-   * This means this [Layer.dValues] are the partial derivative of the input
-   * with respect to [w]
    */
-  abstract fun feedBackward(w: Matrix)
+  abstract fun feedBackward()
 
   abstract val prev: Option<Layer>
   abstract val next: Option<Layer>
 }
 
-class LinearClassifier(val activation: Activation) : Layer() {
+class LinearClassifier(var w: Matrix, var b: Matrix) : Layer() {
 
   override var prev: Option<Layer> = None
   override var next: Option<Layer> = None
 
-  override fun feedForward(w: Matrix) {
+  /**
+   * Weights derivatives and biases vectors
+   */
+  var dW = zeros<Real>(*values.shape)
+  var dB = zeros<Real>(*values.shape)
+
+  /**
+   * Momentum stored vector
+   */
+  var wVx = zeros<Real>(*values.shape)
+  var bVx = zeros<Real>(*values.shape)
+
+  override fun feedForward() {
     assert(prev.isDefined()) { "Called feedForward on a layer without previous layer" }
     val previous = prev.getOrElse { throw IllegalStateException() }
-    // TODO get nth column of weights
-    values = activation.activationFunc(previous.values dot w[0..1])
+    values = previous.values.dot(w) // TODO + bias
   }
 
-  override fun feedBackward(w: Matrix) {
+  override fun feedBackward() {
     assert(next.isDefined()) { "Called feedBackward on a layer withput a next layer" }
     val next = this.next.getOrElse { throw IllegalStateException() }
-    dW = values.t dot next.dValues
-    // TODO grab this layer's nth w column
-    dValues = next.dValues dot w[0..1].t
+    dW = values.t.dot(next.dValues) + b
+    dB = sum(next.dValues, axis = 0)
+    dValues = next.dValues.dot(w.t)
     assert(dValues.shape.contentEquals(values.shape))
-    dValues = activation.dActivationFunc(values, dValues)
+  }
+}
+
+class ReLuActivation() : Layer() {
+
+  override var prev: Option<Layer> = None
+  override var next: Option<Layer> = None
+
+  val reLuActivation: (Matrix) -> Matrix = { m ->
+    // TODO reall?
+    m.map { max(0.0, it) }
+  }
+
+  val dReLuActivation: (Matrix, Matrix) -> Matrix = { values, dValues ->
+    val ret = zeros<Real>(*dValues.shape)
+    for ((i, dV) in dValues.withIndex()) {
+      ret[i] = if (values[i] > 0) dV else 0.0
+    }
+    ret
+  }
+
+  override fun feedForward() {
+    assert(prev.isDefined()) { "Called feedForward on a layer without previous layer" }
+    val previous = prev.getOrElse { throw IllegalStateException() }
+    values = reLuActivation(previous.values)
+  }
+
+  override fun feedBackward() {
+    assert(next.isDefined()) { "Called feedBackward on a layer withput a next layer" }
+    val next = this.next.getOrElse { throw IllegalStateException() }
+    dValues = dReLuActivation(values, next.values)
   }
 }
 
 class NeuralNet(
   val lossFuncs: Loss,
   val regularisation: Option<RegularisationFunc> = None,
-  val initW: Matrix,
   val input: Layer,
   val middleLayers: PersistentList<Layer>,
-  val output: Layer, // TODO training datatype
+  val output: Layer,
   val trainingData: Collection<Labelled>
 ) {
 
@@ -109,11 +125,12 @@ class NeuralNet(
    * Performs a forward pass with single input [x] using weights [w] and TODO biases.
    * Returns the resulting output matrix (1 column, classes lines)
    */
-  fun forwardPass(x: Matrix, w: Matrix): Matrix {
-    input.values = x
-    (middleLayers + output).forEach { it.feedForward(w) }
-    return output.values
-  }
+  fun forwardPass(x: Matrix): Matrix =
+    (middleLayers + output)
+      .also { input.values = x }
+      .onEach { it.feedForward() }
+      .last()
+      .values
 
   /**
    * Performs a single back propagation with weights [w] and input left from the latest
@@ -121,63 +138,82 @@ class NeuralNet(
    *
    * TODO biases too rip
    */
-  fun backwardProp(w: Matrix, dscores: Matrix): Matrix {
-    output.dValues = dscores
-    val firstLayers = input + middleLayers
-    firstLayers.forEach { it.feedBackward(w) }
-    val dWs = firstLayers.map { it.dW }.toTypedArray()
-    val dW = concatenate(*dWs, axis = 1)
-    // TODO refactor
-    assert(dW.shape.contentEquals(w.shape))
-    return dW
-  }
+  fun backwardProp(dscores: Matrix) =
+    (input + middleLayers)
+      // Put dscores on the last layer
+      .also { output.dValues = dscores }
+      // Propagate back
+      .onEach { it.feedBackward() }
+      .filterIsInstance<LinearClassifier>()
+      // Return the weights and biases
+      .map { it to (it.dW to it.dB) }
+      .toMap()
 
   /**
-   * Evaluates the gradient for every x in [xs] using the weights [w].
+   * Evaluates the gradient for every x in [xs].
    * For this, for each x, a forward and backward pass is performed.
+   *
+   * TODO refactor??
    */
-  fun evalAvgGradient(xs: Collection<Labelled>, w: Matrix): Matrix {
-    val gradientSum = zeros<Real>(*w.shape)
+  fun evalAvgGradient(xs: Collection<Labelled>): Map<LinearClassifier, Pair<Matrix, Matrix>> {
+    val gradientSum = HashMap<LinearClassifier, Pair<Matrix, Matrix>>()
+    val batchSize = xs.size
+    var lossSum = 0.0
     for ((label, x) in xs) {
-      val scores = forwardPass(x, w)
+      val scores = forwardPass(x)
       val loss = lossFuncs.lossFunc(label, scores)
+      lossSum += loss
 
       val curriedLoss = { ss: Matrix -> lossFuncs.lossFunc(label, ss) }
-      val dscoresNumerical = curriedLoss.numericalGradient(scores)
-      val dscores = TODO("Analytical loss on the activation function")
-      gradientSum += backwardProp(w, dscoresNumerical)
-    }
-    gradientSum /= xs.size
-    TODO()
-  }
-}
 
-fun trainMNIST(initW: Matrix, training: List<Labelled>, validation: Set<Labelled>) {
-  val batchSize = HyperParams.batchSize
-  val batchNo = training.size / batchSize
-  val batches = training.splitIntoBatches(batchSize)
-  assert(batches.size in (batchNo - 1)..(batchNo + 1)) // TODO remove
-  TODO()
+      // TODO define dLossDunc
+      val dscores = curriedLoss.numericalGradient(scores)
+      //  lossFuncs.dLossFunc(label, scores, loss)
+      val dWsAndDBs = backwardProp(dscores)
+
+      if (gradientSum.isEmpty())
+        dWsAndDBs.forEach { (l, wAndB) -> gradientSum[l] = wAndB }
+      else
+        dWsAndDBs.forEach { i, (dW, dB) ->
+          val (dWSum, dBSum) = gradientSum[i]!!
+          dWSum += dW
+          dBSum += dB
+        }
+    }
+    lossSum /= batchSize
+    gradientSum.values.onEach { (dW, dB) ->
+      dW /= batchSize
+      dB /= batchSize
+    }
+    return gradientSum
+  }
 }
 
 /**
- * Runs every x in [batch] through [net] with the given [weights] and returns
+ * Runs every x in [batch] through [net] and returns
  * the success rate and the average gradients of the weights of the batch
- *
  */
 fun trainBatch(
-  weights: Matrix,
   validation: Collection<Labelled>,
   batch: Collection<Labelled>,
   net: NeuralNet
 ) {
-  var vx = zeros<Real>(*weights.shape)
   val rho = HyperParams.frictionCoeff
   val stepSize = HyperParams.learningRate
+  val linearClassifiers = (net.input + net.middleLayers).filterIsInstance<LinearClassifier>()
   while (true /* TODO change */) {
-    /* STG velocity momentum */
-    val dx = net.evalAvgGradient(batch, weights)
-    vx = vx * rho - dx * stepSize
-    weights += vx
+    val grads = net.evalAvgGradient(batch)
+    linearClassifiers
+      .forEach { layer ->
+
+        // Update weights
+        val (wdx, bdx) = grads[layer]!!
+        layer.wVx = layer.wVx * rho - wdx
+        layer.w = layer.w + layer.wVx
+
+        // Update biases
+        layer.bVx = layer.bVx * rho - bdx
+        layer.b = layer.b + layer.bVx
+      }
   }
 }
