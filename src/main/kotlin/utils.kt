@@ -1,5 +1,6 @@
 import arrow.syntax.collections.tail
 import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.persistentListOf
 import org.jetbrains.numkt.array
 import org.jetbrains.numkt.core.KtNDArray
 import org.jetbrains.numkt.zeros
@@ -63,6 +64,8 @@ fun Collection<Labelled>.splitIntoBatches(batchSize: Int) =
 
 
 inline fun <reified T : Number> KtNDArray<T>.withIndex() = this.iterator().withIndex()
+
+inline fun <reified T: Number> KtNDArray<T>.toList()  = this.iterator().asSequence().toList()
 
 inline operator fun <reified T> T.plus(list: PersistentList<T>) = list.add(0, this)
 

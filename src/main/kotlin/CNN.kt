@@ -6,6 +6,7 @@ import arrow.core.getOrElse
 import kotlinx.collections.immutable.PersistentList
 import org.jetbrains.numkt.core.KtNDArray
 import org.jetbrains.numkt.core.dot
+import org.jetbrains.numkt.core.max
 import org.jetbrains.numkt.math.divAssign
 import org.jetbrains.numkt.math.minus
 import org.jetbrains.numkt.math.plusAssign
@@ -27,6 +28,9 @@ data class Loss(
   val lossFunc: LossFunc,
   val dLossFunc: (Int, Matrix, Real) -> Matrix
 )
+
+data class LearnableParams(val w: Matrix, val b: Matrix)
+typealias LayersWithParams = Map<LinearClassifier, LearnableParams>
 
 sealed class Layer() {
   // TODO verify this is a 1 column matrix
@@ -146,21 +150,31 @@ class NeuralNet(
       .onEach { it.feedBackward() }
       .filterIsInstance<LinearClassifier>()
       // Return the weights and biases
-      .map { it to (it.dW to it.dB) }
+      .map { it to (LearnableParams(it.dW, it.dB)) }
       .toMap()
 
   /**
    * Evaluates the gradient for every x in [xs].
    * For this, for each x, a forward and backward pass is performed.
    *
+   * @return A map of each layer's derivative of its parameters, with the total loss, with the
+   * total batch accuracy at predicting.
+   *
    * TODO refactor??
    */
-  fun evalAvgGradient(xs: Collection<Labelled>): Map<LinearClassifier, Pair<Matrix, Matrix>> {
-    val gradientSum = HashMap<LinearClassifier, Pair<Matrix, Matrix>>()
+  fun evalAvgGradient(xs: Collection<Labelled>): Triple<LayersWithParams, Real, Real> {
+    val gradientSum = HashMap<LinearClassifier, LearnableParams>()
     val batchSize = xs.size
     var lossSum = 0.0
+    var rightGuesses = 0
+    var wrongGuesses = 0
     for ((label, x) in xs) {
       val scores = forwardPass(x)
+
+      val predicted = scores.toList().withIndex().maxBy { it.value }!!.index
+      if (label == predicted) rightGuesses++
+      else wrongGuesses++
+
       val loss = lossFuncs.lossFunc(label, scores)
       lossSum += loss
 
@@ -169,23 +183,24 @@ class NeuralNet(
       // TODO define dLossDunc
       val dscores = curriedLoss.numericalGradient(scores)
       //  lossFuncs.dLossFunc(label, scores, loss)
-      val dWsAndDBs = backwardProp(dscores)
+      val paramGradients = backwardProp(dscores)
 
       if (gradientSum.isEmpty())
-        dWsAndDBs.forEach { (l, wAndB) -> gradientSum[l] = wAndB }
+        gradientSum.putAll(paramGradients)
       else
-        dWsAndDBs.forEach { i, (dW, dB) ->
+        paramGradients.forEach { i, (dW, dB) ->
           val (dWSum, dBSum) = gradientSum[i]!!
           dWSum += dW
           dBSum += dB
         }
     }
-    lossSum /= batchSize
+    val totalLoss = lossSum / batchSize
+    val accuracy = rightGuesses * 100.0 / batchSize
     gradientSum.values.onEach { (dW, dB) ->
       dW /= batchSize
       dB /= batchSize
     }
-    return gradientSum
+    return Triple(gradientSum, totalLoss, accuracy)
   }
 }
 
@@ -201,13 +216,24 @@ fun trainBatch(
   val rho = HyperParams.frictionCoeff
   val stepSize = HyperParams.learningRate
   val linearClassifiers = (net.input + net.middleLayers).filterIsInstance<LinearClassifier>()
+  var iterationCount = 0
   while (true /* TODO change */) {
-    val grads = net.evalAvgGradient(batch)
+    val (grads, loss, accuracy) = net.evalAvgGradient(batch)
+
+    if (iterationCount % 100 == 0) {
+      println(
+        "Iteration $iterationCount:\n" +
+          "  Batch avg loss: $loss\n" +
+          "  Batch avg accuracy: $accuracy"
+      )
+    }
+    iterationCount++
+
     linearClassifiers
       .forEach { layer ->
+        val (wdx, bdx) = grads[layer]!!
 
         // Update weights
-        val (wdx, bdx) = grads[layer]!!
         layer.wVx = layer.wVx * rho - wdx
         layer.w = layer.w + layer.wVx
 
