@@ -1,8 +1,10 @@
-import kotlin.math.max
+import arrow.core.None
+import kotlinx.collections.immutable.persistentListOf
 import org.jetbrains.numkt.math.maximum
 import org.jetbrains.numkt.math.minus
 import org.jetbrains.numkt.math.plus
 import org.jetbrains.numkt.math.sum
+import org.jetbrains.numkt.random.Random
 import org.jetbrains.numkt.zeros
 
 /**
@@ -21,6 +23,19 @@ object HyperParams {
   const val reportSize: Int = 100
 }
 
+val randomMatrix: () -> Matrix = { Random.rand(HyperParams.neuronsPerLayer, 1) }
+
+fun main() {
+  val input = LinearClassifier(randomMatrix(), randomMatrix())
+  val output = ReLuActivation()
+  val middleLayers =
+    persistentListOf(ReLuActivation(), LinearClassifier(randomMatrix(), randomMatrix()))
+  val loss = Loss(svmLoss, dSvmLoss)
+  val data = parseCSVDataMNIST()
+  val net = NeuralNet(loss, None, input, middleLayers, output)
+  trainBatch(data, net)
+}
+
 val svmLoss: LossFunc = { label, actual ->
   val margins = maximum(zeros(*actual.shape), actual - actual[label] + 1)
   margins[label] = 0.0
@@ -28,30 +43,8 @@ val svmLoss: LossFunc = { label, actual ->
 }
 
 // TODO return type??
-val dSvmLoss: LossFunc = { label, actual ->
-  val margins = maximum(zeros(*actual.shape), actual - actual[label] + 1)
-  margins.map { if (it != 0.0) 1.0 else 0.0 }
-  sum(margins)
+val dSvmLoss: (Int, Matrix, Real) -> Matrix = { label, fx, x ->
+  fx.map { if (it != 0.0) 1.0 else 0.0 }
+  sum(fx)
   TODO("Verify")
-}
-
-val reLuActivation: (Matrix) -> Matrix = { m ->
-  // TODO reall?
-  m.map { max(0.0, it) }
-}
-
-val dReLuActivation: (Matrix, Matrix) -> Matrix = { values, dValues ->
-  val ret = zeros<Real>(*dValues.shape)
-  for ((i, dV) in dValues.withIndex()) {
-    ret[i] = if (values[i] > 0) dV else 0.0
-  }
-  ret
-}
-
-fun trainMNIST(initW: Matrix, training: List<Labelled>, validation: Set<Labelled>) {
-  val batchSize = HyperParams.batchSize
-  val batchNo = training.size / batchSize
-  val batches = training.splitIntoBatches(batchSize)
-  assert(batches.size in (batchNo - 1)..(batchNo + 1)) // TODO remove
-  TODO()
 }

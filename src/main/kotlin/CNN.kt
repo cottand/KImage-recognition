@@ -119,8 +119,7 @@ class NeuralNet(
   val regularisation: Option<RegularisationFunc> = None,
   val input: Layer,
   val middleLayers: PersistentList<Layer>,
-  val output: Layer,
-  val trainingData: Collection<Labelled>
+  val output: Layer
 ) {
 
   /**
