@@ -3,19 +3,17 @@
 import arrow.core.None
 import arrow.core.Option
 import arrow.core.getOrElse
+import kotlin.math.max
 import kotlinx.collections.immutable.PersistentList
 import org.jetbrains.numkt.core.KtNDArray
 import org.jetbrains.numkt.core.dot
-import org.jetbrains.numkt.core.max
 import org.jetbrains.numkt.math.divAssign
 import org.jetbrains.numkt.math.minus
-import org.jetbrains.numkt.math.plusAssign
 import org.jetbrains.numkt.math.plus
+import org.jetbrains.numkt.math.plusAssign
 import org.jetbrains.numkt.math.sum
 import org.jetbrains.numkt.math.times
 import org.jetbrains.numkt.zeros
-import java.lang.IllegalStateException
-import kotlin.math.max
 
 typealias Real = Double
 typealias Matrix = KtNDArray<Real>
@@ -205,11 +203,11 @@ class NeuralNet(
 }
 
 /**
- * Runs every x in [batch] through [net] and returns
- * the success rate and the average gradients of the weights of the batch
+ * Trains [net] with the values in [batch], every [HyperParams.reportSize] iterations it prints the
+ * accuracy and loss
+ * of that that iteration.
  */
 fun trainBatch(
-  validation: Collection<Labelled>,
   batch: Collection<Labelled>,
   net: NeuralNet
 ) {
@@ -217,10 +215,10 @@ fun trainBatch(
   val stepSize = HyperParams.learningRate
   val linearClassifiers = (net.input + net.middleLayers).filterIsInstance<LinearClassifier>()
   var iterationCount = 0
-  while (true /* TODO change */) {
+  while (true /* TODO change? */) {
     val (grads, loss, accuracy) = net.evalAvgGradient(batch)
 
-    if (iterationCount % 100 == 0) {
+    if (iterationCount % HyperParams.reportSize == 0) {
       println(
         "Iteration $iterationCount:\n" +
           "  Batch avg loss: $loss\n" +

@@ -1,10 +1,9 @@
-import org.jetbrains.numkt.core.KtNDArray
+import kotlin.math.max
 import org.jetbrains.numkt.math.maximum
 import org.jetbrains.numkt.math.minus
 import org.jetbrains.numkt.math.plus
 import org.jetbrains.numkt.math.sum
 import org.jetbrains.numkt.zeros
-import kotlin.math.max
 
 /**
  * Stores hyper parameters and practical constants.
@@ -13,12 +12,13 @@ object HyperParams {
   const val regularisationCoeff: Real = 0.1
   const val gradientH = 0.00001
   const val neuronsPerLayer = 5
-  const val learningRate = 1e-7 /* e-4 .. e-11 */
+  const val learningRate = 1e-5 /* e-4 .. e-11 */
   const val frictionCoeff: Real = 0.95 /* 0.9 .. 0.99 */
   const val batchSize = 1000
   const val classes = 10
   const val minScore = 0.0
   const val maxScore = 10.0
+  const val reportSize: Int = 100
 }
 
 val svmLoss: LossFunc = { label, actual ->
@@ -55,4 +55,3 @@ fun trainMNIST(initW: Matrix, training: List<Labelled>, validation: Set<Labelled
   assert(batches.size in (batchNo - 1)..(batchNo + 1)) // TODO remove
   TODO()
 }
-

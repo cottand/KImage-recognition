@@ -1,10 +1,9 @@
 import arrow.syntax.collections.tail
+import java.io.File
 import kotlinx.collections.immutable.PersistentList
-import kotlinx.collections.immutable.persistentListOf
 import org.jetbrains.numkt.array
 import org.jetbrains.numkt.core.KtNDArray
 import org.jetbrains.numkt.zeros
-import java.io.File
 
 /**
  * Computes the numerical gradient of receiver at [x]
@@ -62,10 +61,9 @@ fun Collection<Labelled>.splitIntoBatches(batchSize: Int) =
     .groupBy { (i, _) -> i / batchSize }
     .map { (_, v) -> v.map { it.value } }
 
-
 inline fun <reified T : Number> KtNDArray<T>.withIndex() = this.iterator().withIndex()
 
-inline fun <reified T: Number> KtNDArray<T>.toList()  = this.iterator().asSequence().toList()
+inline fun <reified T : Number> KtNDArray<T>.toList() = this.iterator().asSequence().toList()
 
 inline operator fun <reified T> T.plus(list: PersistentList<T>) = list.add(0, this)
 
